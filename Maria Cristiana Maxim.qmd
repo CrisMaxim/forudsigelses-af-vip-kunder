@@ -1,0 +1,1499 @@
+---
+title: ""
+format: 
+  pdf:
+    toc: false
+    toc-title: Indholdsfortegnelse
+    toc-depth: 4
+    number-sections: true
+    number-depth: 4
+    fontsize: 12pt
+    mainfont: Times New Roman
+    linestretch: 1.5
+    geometry:
+      - top=30mm
+      - left=20mm
+      - right=20mm
+      - bottom=30mm
+      - heightrounded
+---
+\renewcommand{\contentsname}{Indholdsfortegnelse}
+\newpage
+
+```{r}
+#| label: setup
+#| include: false
+#| warning: false
+#| 
+
+# eval: false prevents code from being evaluated. (And obviously if the code is not run, no results will be generated). This is useful for displaying example code, or for disabling a large block of code without commenting each line.
+
+# include: false runs the code, but doesn’t show the code or results in the final document. Use this for setup code that you don’t want cluttering your report.
+
+# echo: false prevents code, but not the results from appearing in the finished file. Use this when writing reports aimed at people who don’t want to see the underlying R code.
+
+# Du kan lave code chunks med crtl/alt/I. 
+# Angiv en label som ovenfor til hver chunk. 
+# Brug evt. include, eval, echo eller en anden parameter til at få det ønskede output
+
+pacman::p_load("tidyverse", "tinytex")
+# tinytex::install_tinytex()
+# tinytex::pdflatex('test.tex')
+
+# Tilføj selv flere pakker
+```
+
+\begin{titlepage}
+\begin{center}
+\vspace*{2cm}
+
+{\Huge \textbf{Forudsigelse af VIP-gæster: Et casestudie af Viborg F.F.}}
+
+\vspace{0.5cm}
+
+{\large \textbf{Author:}}\\
+Maria Cristiana Maxim
+
+\vspace{1cm}
+
+{\large \textbf{1. semesterprøven 2024}} \\
+Vejleder: Lotte S. Kronbæk
+
+\vspace{2cm}
+
+{\large \textbf{Dato: 24 februar 2025}}
+
+\vfill
+
+{\large \textbf{Antal tegn: 22.959}}
+
+\end{center}
+\end{titlepage}
+
+\newpage
+
+\tableofcontents
+
+\newpage
+
+```{r echo=FALSE, cache=TRUE, include=FALSE}
+
+#| label: dataanalyse VFF
+#| fig-cap: Webscraping fra superstat.dk,rensning og sammensætning for Viborg FF.
+#| warning: false
+#| message: false
+#| echo: false
+#| cache: true
+
+# Introduktion  -----------------------------------------------------------
+
+# Denne koder er brugt ift. dataanalyse og databehandling med henblik på 
+# at opbygge et datasæt, der kan anvendes til at modellere og forudsige 
+# antallet af guldmenuer blandt VIP-gæster ved VFF. 
+# Data fra forskellige kilder indlæses, og tjekker datatyper, samt med kolonner (variabler) navne. 
+# Manglende værdier bliver fjern. 
+# Visualiseringer som boxplots, histogrammer og korrelationsmatricer bruges til 
+# at identificere mønstre, outliers og sammenhænge mellem variabler.    
+# VIF-analyse bruges til at fjerne multikollinearitet.
+# Implementerer og evaluerer modeller som Baseline, Ridge og Lasso regression, Best subset selection 
+# samt vurderer præstationen ved hjælp af metrikker som RMSE
+
+
+# Pacman ------------------------------------------------------------------
+
+# bruger pacman-pakken til at administrere og loade nødvendige R-pakker.
+
+pacman::p_load(
+  httr, dplyr, jsonlite, tidyverse, rvest, tidyr, lubridate,
+  stringr, zoo, purrr, readxl, openxlsx, RSQLite,
+  DBI, hms, tools, progress, httr2, ggplot2, boot, leaps, caret,
+  glmnet, car, leaps, DBI, rvest, corrplot
+) 
+
+# R-pakker:
+# 1. Databehandling og manipulation
+# httr: Bruges til at udføre HTTP-forespørgsler, f.eks. til at hente data fra API’er.
+# dplyr: Et kerneværktøj til datamanipulation i R, som understøtter filtering, transformation og opsummering af data.
+# tidyr: Hjælper med at skabe "tætte" datasæt (tidy data), hvilket gør det lettere at arbejde med dataanalyse.
+# stringr: Til behandling og manipulation af tekstdata.
+# zoo: Til arbejde med tidsserier, herunder uregelmæssige tidsrækker.
+# purrr: Giver kraftfulde værktøjer til funktionel programmering, som hjælper med iteration over datastrukturer.
+
+# 2. Dataindlæsning og -eksport
+# jsonlite: Til at arbejde med JSON-data, som ofte bruges til API-integrationer.
+# readxl: Bruges til at indlæse Excel-filer direkte i R.
+# openxlsx: Til at oprette og redigere Excel-filer uden afhængighed af ekstern software.
+
+# 3. Databasestyring
+# RSQLite: En pakke til at arbejde med SQLite-databaser direkte fra R.
+# DBI: Et interfacesystem, der giver mulighed for at kommunikere med mange databaseplatforme.
+
+# 4. Tids- og datoanalyse
+# lubridate: Hjælper med at arbejde med datoer og tider og gør det nemt at udføre beregninger på tidsrækker.
+# hms: Specialiseret til håndtering af tidsformater (timer, minutter og sekunder).
+
+# 5. Visualisering
+# ggplot2: Et af de mest anvendte værktøjer til data-visualisering i R.
+
+# 6. Statistisk analyse og modellering
+# boot: Bruges til bootstrap-simuleringer, en metode til at estimere usikkerhed i statistik.
+# caret: En pakke til maskinlæring og modellering, der understøtter dataforberedelse og validering.
+# glmnet: Bruges til lasso- og ridge-regression, som hjælper med feature selection.
+# car: Til statistiske modeller og diagnostiske tests.
+# leaps: Hjælper med at identificere de bedste variabler til regression.
+
+# 7. Diverse nyttige værktøjer
+# tools: Til at arbejde med filmanipulation og forskellige R-utility-funktioner.
+# progress: Bruges til at skabe feedback til brugeren om kørsel af lange scripts.
+# httr2: En opdateret version af httr, der gør det lettere at håndtere API-forespørgsler.
+# rvest: som indeholder funktionen html_table, som vil være bruget til at læse data fra superstats.dk
+# corrplot: for at lave korrelationsplot 
+
+
+#Jeg skaber en mappe for transformed databaser, hvor jeg vil gemme de rente databases
+#fra forskellige kilder 
+#I R betyder recursive = TRUE i funktionen dir.create() at 
+#der oprettes alle nødvendige overordnede mapper, hvis de ikke allerede eksisterer.
+
+if (!dir.exists("data/transformed")) { # Tjekker om mapperne eksisterer
+  dir.create("data/transformed", recursive = TRUE) # Opretter mappen for transformerede data
+}
+# 1. Datainsamling
+# Excel-Ark ---------------------------------------------------------------
+
+# Læs og rense excel_guld, der indeholder oplysninger om VIP-guldmenuer.
+# VIGTIGT: Excel-filen skal lægge i en datamappe, der er placeret samme sted som r-filen
+
+guld_data <- read_xlsx("data/guld.xlsx") # Indlæs Guld Datasæt
+
+guld_data <- select(guld_data, -Gule_poletter_stk) # Fjern unødvendig kolonne med poletter
+
+guld_data <- drop_na(guld_data)   # Fjern rækker med manglende værdier for at undgå fejl i analysen.
+
+# Konvertering af datoformat:
+# Datoen i datasættet er i tekstformat ("dd.mm.yyyy"). Vi konverterer dette til 
+# et standardiseret R-datoformat, der kan bruges til beregninger og visualisering.
+
+guld_data$dato <- as.Date(guld_data$Dato, format = "%d.%m.%Y")
+
+# Hvis nogle datoer stadig ikke er læsbare (fx på grund af Excel-serienumre),
+# konverteres disse til gyldige datoer med 'origin = "1899-12-30"'.
+
+guld_data$dato[is.na(guld_data$dato)] <- as.Date(as.numeric(guld_data$Dato[is.na(guld_data$dato)]), 
+                                                   origin = "1899-12-30")
+
+guld_data <- select(guld_data, -Dato) #fjerne den første Dato kolonnen 
+
+guld_data <- rename(guld_data, Dato=dato) # omdøbe dato kolonnen 
+guld_data <- rename(guld_data, Modstander=Kamp) # omdøbe Kamp kolonnen 
+
+guld_data <- relocate(guld_data, Dato, .before = Modstander) # Flyt 'dato'-kolonnen til starten.
+
+#Jeg har skabt en ny variabel med uddnyttelsesgrad af guld menuer, fordi det er relevant ift. at forudsige 
+#udnyttelsesgrad af VIP gæster der have guld menu
+# Filtrering - Bruger [] til at fjerne rækker, hvor Guld_menu_stk overstiger Antal_bestilte eller Antal_max.
+guld_data <- guld_data[!(guld_data$Guld_menu_stk > guld_data$Antal_bestilte | 
+                           guld_data$Guld_menu_stk > guld_data$Antal_max), ]
+
+# Fjern uønskede kolonner
+guld_data <- guld_data[, !(names(guld_data) %in% c("Antal_bestilte", "Antal_max"))] #Bruger names() og %in% til at fjerne flere kolonner på én gang.
+
+# Vis et hurtigt overblik over datasættets struktur og variabler:
+# Funktionen 'glimpse' giver os en idé om datastrukturen og datatyperne.
+
+glimpse(guld_data)
+
+## Visualisering af outliers
+
+# Identifikation af outliers:
+# Jeg bruger interkvartilområdet (IQR) til at finde observationer, der ligger
+# uden for 1.5 * IQR fra kvartilerne. Disse observationer betragtes som outliers.
+
+find_outliers <- function(x) {
+  iqr <- IQR(x, na.rm = TRUE)  # Beregn IQR.
+  lower_bound <- quantile(x, 0.25, na.rm = TRUE) - 1.5 * iqr  # Nedre grænse.
+  upper_bound <- quantile(x, 0.75, na.rm = TRUE) + 1.5 * iqr  # Øvre grænse.
+  x < lower_bound | x > upper_bound  # Returner TRUE for outliers.
+}
+
+# Identificér outliers i 'Udnyttelsesgrad' og gem resultatet som en tabel
+outliers <- guld_data[find_outliers(guld_data$Guld_menu_stk), ]
+
+# Vælg relevante kolonner
+outliers <- outliers[, c("Dato", "Guld_menu_stk")]
+
+# Visualisering af outliers:
+# Jeg bruger boxplots til at vise fordelingen af numeriske variabler og markerer
+# outliers med røde prikker.
+
+guld_data |>
+  pivot_longer(cols = where(is.numeric), names_to = "variable", values_to = "value") |>
+  ggplot(aes(x = variable, y = value)) +
+  geom_boxplot(outlier.colour = "red", outlier.shape = 16, outlier.size = 2) + 
+  labs(
+    title = "Boxplots for Guld menuer",
+    x = "Variabel",
+    y = "Værdi"
+  ) +
+  theme_minimal()
+
+print(guld_data)
+
+saveRDS(guld_data, file = "data/transformed/guld_data_clean.rds") # Gem det rensede datasæt som RDS fil
+
+# Superstats.dk -----------------------------------------------------------
+
+#indlæs kampprogram fra superstats.dk og gemme det som en database med datoer fra 2013-2024
+
+kampprogram_samlet <- list() # Initialiser en liste til at gemme kampprogrammer
+  n_iter <- (2024 - 2013 + 1) # Beregn antallet af sæsoner fra 2013 til 2024
+  
+  for (y in 2013:2024) { # Loop gennem hver sæson fra 2013 til 2024
+      url <- paste0("https://superstats.dk/program?season=", y,"%2F", y+1) # Byg URL til kampprogrammet
+      kampprogram_alle <- read_html(url, encoding = "UTF-8") |>
+      html_elements("#content div#club") |>
+      html_table(header = FALSE, convert = FALSE) # Indlæs kampprogram fra URL
+      kampprogram_valgte <- kampprogram_alle[1:(length(kampprogram_alle))] # Vælg relevante data fra indlæste tabel
+      kampprogram_samlet[[paste0(y, "/", y+1)]] <- kampprogram_valgte # Gem de valgte data i listen med sæson som nøgle
+  }
+  
+kampprogram_samlet <- map_dfr(kampprogram_samlet, bind_rows, .id = "season") # Kombiner alle sæsoner til én dataframe
+
+view(kampprogram_samlet) #visualisering af database kampprogram 
+
+#Omdøb variabler 
+
+kampprogram_samlet <- kampprogram_samlet |>
+  rename(
+    Sæson = season,
+    Dag = X1,
+    Dato = X2,
+    Modstander = X3,
+    Score = X4,
+    Tilskuere = X5,
+    Dommer = X6
+  ) # Omdøb kolonnerne til specifikke navne af variabler der vil være brugt i analysen 
+
+#fjerne variabler der ikke er relevant til analyse
+kampprogram_samlet <- kampprogram_samlet |>
+  select (-X7, -Dommer) #fjerne x7 kolonnen som var tom og fjerne dommer kolonnen fordi jeg vil ikke bruge det i analysen 
+
+#Del Dato kolonnen i dato og tidspunkt fordi dato havde begge 2 værdier ind 
+kampprogram_samlet <- kampprogram_samlet |>
+  separate(Dato,
+           into = c("Dato", "Tidspunkt"),
+           sep = " ",
+           remove = TRUE) # Del Dato kolonnen i Dato og Tidspunkt 
+
+#visualisering af database ift. at forbedre kolonner med fejl
+
+view(kampprogram_samlet) #visualisering af database 
+
+# Nu vil jeg skabe en ny kolonne for runde og fjerne fra rækkene 
+
+# Tilføj en ny kolonne for runde og fjern rundeoplysningerne fra rækkerne
+kampprogram_samlet <- kampprogram_samlet |>
+  mutate(Runde = cumsum(grepl("Runde", Dag))) |>
+  filter(!grepl("Runde", Dag))
+
+# Dato kolonnen har problemet fordi det har ikke år ind. 
+# Jeg tilføjer år for rækker pga. sæson, 
+
+kampprogram_samlet <- kampprogram_samlet |>
+  mutate( #bruges til at oprette eller ændre eksisterende kolonner i dataframen. Her bruges den til at ændre Dato kolonnen.
+    Dato = ifelse( #er en funktion, der bruges til at oprette betingede udsagn. 
+                   #Her bruges den til at opdatere Dato kolonnen baseret på betingelser.
+      substr(Dato, 4, 5) #udtrækker månedens del af Dato kolonnen (4. og 5. tegn).
+      %in% c("01", "02", "03", "04", "05", "06"), #kontrollerer, om måneden er mellem januar og juni.
+      #Hvis betingelsen er sand (dvs. måneden er mellem januar og juni), udføres den første del af ifelse.
+      paste0(Dato, "/", substr(Sæson, 6, 9)), #paste0 kombinerer Dato med årstallet fra Sæson kolonnen.
+      #substr(Sæson, 6, 9) udtrækker det andet år i sæsonen (f.eks. "2014" fra "2013/2014"). 
+      #Dette tilføjer det andet år i sæsonen til datoen, hvis måneden er mellem januar og juni.
+      paste0(Dato, "/", substr(Sæson, 1, 4)) #Hvis betingelsen ikke er sand (dvs. måneden er mellem juli og december), udføres denne del af ifelse.
+      #paste0 kombinerer Dato med det første år i sæsonen (f.eks. "2013" fra "2013/2014").
+      #Dette tilføjer det første år i sæsonen til datoen, hvis måneden er mellem juli og december.
+    )
+  ) # Tilføj sæson år til datoen baseret på måned
+
+#Jeg filtrer Modstander efter VFF og derefter fjerne VFF 
+#for at have det samme variabel som i guld_menu database
+
+kampprogram_samlet <- kampprogram_samlet |>
+  filter(grepl("VFF", Modstander)) # Filtrer kun rækker hvor Modstander indeholder "VFF"
+
+kampprogram_samlet <- kampprogram_samlet |>
+  filter(startsWith(Modstander, "VFF")) # Filtrer for at inkludere kun modstandere der starter med "VFF"
+
+kampprogram_samlet <- kampprogram_samlet |>
+  mutate(Modstander = str_remove(Modstander, "VFF-")) # Fjern præfikset "VFF-" fra Modstander navnet
+
+#jeg vil skabe en ny variabel med Resultat_sidste_kamp fra Score 
+print(unique(kampprogram_samlet$Score)) #print værdier af score 
+
+kampprogram_samlet <- kampprogram_samlet |>
+  # 1. Håndterer tomme værdier: Hvis Score er "", ændres den til NA
+  mutate(Score = ifelse(Score == "", NA, Score)) |>  # Håndter tomme værdier
+  # 2. Opdeler Score i to separate kolonner (VFF_Score og Modstander_Score) baseret på '-'
+  separate(Score, into = c("VFF_Score", "Modstander_Score"), sep = "-", convert = TRUE, fill = "right") |> 
+  # 3. Gruppér efter Sæson, så beregningerne kun sker inden for hver sæson
+  group_by(Sæson) |> 
+  # 4. Opretter en ny kolonne, der viser resultatet af den sidste kamp
+  mutate(
+    Resultat_Sidste_Kamp = case_when(
+      lag(VFF_Score) > lag(Modstander_Score) ~ "V", # Hvis VFF’s score var højere end modstanderen → Sejr ("V")
+      lag(VFF_Score) == lag(Modstander_Score) ~ "U", # Hvis VFF’s score var lig med modstanderen → Uafgjort ("U")
+      lag(VFF_Score) < lag(Modstander_Score) ~ "T", # Hvis VFF’s score var lavere end modstanderen → Tab ("T")
+      TRUE ~ NA_character_ # Hvis der ikke findes en tidligere kamp → NA
+    )
+  ) |> 
+  # 5. Fjerner gruppering for at undgå utilsigtede effekter i videre analyser
+  ungroup()
+
+#Fjerne de unødvendige variabler fra database
+kampprogram_samlet <- kampprogram_samlet |>
+  select(-VFF_Score, -Modstander_Score)
+
+# Fordele ved denne løsning
+# ✅ Automatisk håndtering af resultater – Vi får en ekstra kolonne med resultatet af forrige kamp uden manuel indtastning.
+# ✅ Sæsonspecifik analyse – Ved at bruge group_by(Sæson) sikrer vi, at lag() kun kigger på tidligere kampe i den samme sæson.
+# ✅ Simpel og effektiv – lag() er en nem måde at referere til tidligere rækker uden at bruge loops.
+
+view(kampprogram_samlet) #visualisering af database for at sikkre at variabler var fjernt
+
+##Skabe en ny variabel Tilskuere_sidste_kamp baseret på Tilskuere 
+
+#Ved at bruge en lag for tilskuere og regne tilskuere fra sidste kamp 
+#kan det altså opnå en mere nuanceret og præcis analyse, 
+#der tager højde for tidsmæssige afhængigheder og mønstre i dataene. 
+#Dette kan føre til bedre beslutningstagning og mere effektive strategier for at øge tilskuertallet. 
+
+kampprogram_samlet <- kampprogram_samlet |>
+  group_by(Sæson) |> 
+  mutate(Tilskuere_sidste_kamp = lag(Tilskuere)) |> # Opret en kolonne 'Tilskuere_sidste_kamp' med tilskuertallet fra den sidste kamp
+  ungroup() |> 
+  select(-Tilskuere) # Fjern 'Tilskuere' kolonnen efter at have tilføjet 'Tilskuere_sidste_kamp'
+
+#Konverter til heltal
+kampprogram_samlet$Tilskuere_sidste_kamp <- as.integer(gsub("\\.", "", kampprogram_samlet$Tilskuere_sidste_kamp)) # Fjern punktummer og konverter til heltal
+
+
+#laver en kategoriske variabel fra Tidspunkt variabel med 3 kategorier 
+kampprogram_samlet <- kampprogram_samlet |>
+  mutate(
+    Tidspunkt = case_when(
+      between(as.numeric(substr(Tidspunkt, 1, 2)), 12, 14) ~ "Middag", # Kategoriser tidspunktet som "Middag" hvis det er mellem 12 og 14
+      between(as.numeric(substr(Tidspunkt, 1, 2)), 15, 17) ~ "Eftermiddag", # Kategoriser tidspunktet som "Eftermiddag" hvis det er mellem 15 og 17
+      between(as.numeric(substr(Tidspunkt, 1, 2)), 18, 23) ~ "Aften" # Kategoriser tidspunktet som "Aften" hvis det er mellem 18 og 23
+    )
+  )
+kampprogram_samlet <- kampprogram_samlet |> 
+  mutate(Dato = as.Date(Dato, format = "%d/%m/%Y")) # Konverter Dato kolonnen til Date format
+
+glimpse(kampprogram_samlet) #visualisering af variabler og typer af variabler samt med værdier 
+
+#gemme data base som rds fil i transformed data
+saveRDS(kampprogram_samlet, "data/transformed/kampprogram_clean.rds")
+
+# Helligdag i dk ----------------------------------------------------------
+
+n_iter <- (2024 - 2013 + 1) # Beregn total antal iterationer
+
+helligdag_samlede <- list() # Opretter en tom liste til at gemme helligdage
+for (y in 2013:2024) {
+  url <- paste0("https://www.kalender-365.dk/helligdage/", y, ".html") # Bygger URL til helligdage for året y 
+  
+  helligdag_alle <- read_html(url, encoding = "UTF-8") |> # Indlæser HTML indholdet fra URL'en med UTF-8 encoding
+    html_elements("table") |> 
+    html_table(header = TRUE) # Konverterer tabellen til en dataframe med header
+  
+  helligdag_valgte <- helligdag_alle[1:(length(helligdag_alle))] # Vælger relevante data fra den indlæste tabel
+  helligdag_samlede[[as.character(y)]] <- helligdag_valgte # Gemmer de valgte data i listen med året som nøgle
+}
+
+helligdag_samlede <- map_dfr(helligdag_samlede, bind_rows, .id= "År") # Kombinerer alle dataframes i listen til én dataframe og tilføjer en kolonne for år
+
+view(helligdag_samlede) #visualisere database
+
+helligdag_samlede <- helligdag_samlede |>
+  select(-År, -Dag, -`Dage tilbage`) # Fjerner unødvendige kolonner fra dataframen
+
+#Ændre navne af månede fra charakter til numeriske 
+helligdag_samlede <- helligdag_samlede |>
+  mutate(
+    Dato = case_when( # Opretter en ny Dato kolonne baseret på månedens forkortelse
+      str_detect(Dato, "januar") ~ str_replace(Dato, "januar", "01"), 
+      str_detect(Dato, "februar") ~ str_replace(Dato, "februar", "02"), 
+      str_detect(Dato, "marts") ~ str_replace(Dato, "marts", "03"), 
+      str_detect(Dato, "april") ~ str_replace(Dato, "april", "04"), 
+      str_detect(Dato, "maj") ~ str_replace(Dato, "maj", "05"), 
+      str_detect(Dato, "juni") ~ str_replace(Dato, "juni", "06"), 
+      str_detect(Dato, "juli") ~ str_replace(Dato, "juli", "07"), 
+      str_detect(Dato, "august") ~ str_replace(Dato, "august", "08"), 
+      str_detect(Dato, "september") ~ str_replace(Dato, "september", "09"), 
+      str_detect(Dato, "oktober") ~ str_replace(Dato, "oktober", "10"), 
+      str_detect(Dato, "november") ~ str_replace(Dato, "november", "11"), 
+      str_detect(Dato, "december") ~ str_replace(Dato, "december", "12"), 
+      TRUE ~ Dato # Beholder Dato uændret hvis ingen match findes
+    )
+  )
+
+helligdag_samlede <- helligdag_samlede |>
+  mutate(
+    Dato = paste(Dato, sep = "."), 
+  ) |> 
+  mutate( 
+    Dato = dmy(Dato))# Konverterer den nye Dato kolonne til Date format ved hjælp af dmy funktionen
+
+helligdag_samlede <- helligdag_samlede |>
+  mutate(Helligdag = if_else(Dato %in% helligdag_samlede$Dato, "Ja", "Nej")) # Tilføjer en kolonne der angiver om Datoen er en helligdag
+
+saveRDS(helligdag_samlede, "data/transformed/helligdage_clean.rds") # Gemmer den rensede helligdagsdata som RDS fil
+
+# DMI ---------------------------------------------------------------------
+
+#Læs og rense DMI-data
+
+#Basisinformation til DMI 
+
+# Vi definerer basisinformation for API-kald til DMI:
+# - base_url: URL'en for API'ets endpoint.
+# - info_url: Endpointet, der bruges til at hente meteorologiske observationer.
+# - station_id: Identifikatoren for den vejrstation, vi ønsker data fra.
+# - api_key: API-nøglen, der giver adgang til data.
+
+# API-parametre
+base_url <- "https://dmigw.govcloud.dk/v2/" # Basis URL for API'en
+info_url <- "metObs/collections/observation/items?" # Endpoint for observationsdata
+station_id <- "stationId=06060"  # Karup station ID
+limit <- "&limit=1000" # Sætter grænsen for antallet af resultater
+api_key <- "&api-key=61bd648f-6881-41ef-b8ed-b9742965ec48" # API-nøgle til autentifikation
+
+# Funktion til at hente data fra API
+fetch_data <- function(parameter_id, date) { # Definerer en funktion til at hente data baseret på parameter og dato
+  datetime <- paste0("datetime=", date, "T10:00:00Z/", date, "T10:00:00Z") # Sætter datetime parameteren for API-kaldet
+  full_url <- paste0(base_url, info_url, station_id, "&", datetime, limit, parameter_id, api_key) # Bygger den fulde URL til API-kaldet
+
+  api_call <- httr::GET(full_url) # Udfører GET-anmodningen til API'en
+  if (api_call$status_code == 200) { # Tjekker om anmodningen var succesfuld
+    api_json <- content(api_call, "text", encoding = "UTF-8") %>%
+      jsonlite::fromJSON(flatten = TRUE) # Konverterer JSON-svaret til en dataframe
+    return(api_json) # Returnerer det hentede data
+  } else {
+    warning(paste("API-kald mislykkedes for dato:", date)) # Advarer hvis anmodningen mislykkedes
+    return(NULL) # Returnerer NULL hvis der opstod en fejl
+  }
+}
+
+# Initialiser en tom dataframe til at gemme resultater for alle datoer
+dmi_data <- data.frame(Dato = Date(), # Opretter en dataframe med kolonner for Dato, Temperatur, Nedbør og Vind
+                       Temperatur = numeric(),
+                       Nedbør = numeric(),
+                       Vind = numeric(),
+                       stringsAsFactors = FALSE)
+
+n_iter <- 109 # Angiver det totale antal iterationer
+
+# Iterer kun over Dato
+for (i in 1:nrow(kampprogram_samlet)) { # Loop gennem hver række i kampprogram_samlet dataframe
+  date <- kampprogram_samlet$Dato[i] # Henter datoen fra den aktuelle række
+
+  data_parameter_id1 <- fetch_data("&parameterId=temp_mean_past1h", date) # Henter temperaturdata for den aktuelle dato
+  data_parameter_id2 <- fetch_data("&parameterId=precip_dur_past1h", date) # Henter nedbørsdata for den aktuelle dato
+  data_parameter_id3 <- fetch_data("&parameterId=wind_speed_past1h", date) # Henter vinddata for den aktuelle dato
+
+  if (!is.null(data_parameter_id1) && !is.null(data_parameter_id2) && !is.null(data_parameter_id3) &&
+      length(data_parameter_id1$features$properties.value) > 0 &&
+      length(data_parameter_id2$features$properties.value) > 0 &&
+      length(data_parameter_id3$features$properties.value) > 0) {
+
+               dmi_data <- bind_rows(dmi_data, # Samler de hentede data i dmi_data dataframe
+                          data.frame(
+                            Dato = as.Date(date),
+                            Temperatur = data_parameter_id1$features$properties.value,
+                            Nedbør = data_parameter_id2$features$properties.value,
+                            Vind = data_parameter_id3$features$properties.value,
+                            stringsAsFactors = FALSE
+                          )
+    )
+  } else {
+    warning(paste("Ingen data tilgængelig for dato:", date)) # Advarer hvis der ikke er nogen data tilgængelig for den aktuelle dato
+  }
+}
+
+view(dmi_data)
+
+saveRDS(dmi_data,"data/transformed/DMI_vejr.rds") # Gemmer den indsamlede vejrdata som en RDS fil
+
+# Samle alle datasæt ---------------------------------------------------------
+
+# Her samler jeg data fra de 4 tidligere forberedte datasæt:
+# 1. `guld_menu`: Indeholder oplysninger om VIP-guldmenuer.
+# 2. `kampprogram_samlet`: Indeholder kampdata for VFF's hjemmekampe.
+# 3. `helligdag_samlede`: Indeholder dato og ja/nej for helligdag
+# 3. `dmi_data`: Indeholder meteorologiske observationer for kampdage.
+
+# Ved at bruge `inner_join` sikrer vi, at kun rækker med matchende `dato` i 4
+# datasæt inkluderes i det endelige datasæt `samlet_data`.
+
+samlet_data <- guld_data |>
+  left_join(dmi_data, by = "Dato") |> # Fletter guld_data med dmi_data baseret på Dato
+  left_join(kampprogram_samlet, by = "Dato") |> # Fletter med kampprogram_samlet
+  left_join(helligdag_samlede, by = "Dato") |> # Fletter med helligdag_samlet
+  mutate(Helligdag = replace_na(Helligdag, "Nej")) |>
+  select(-Modstander.y) |>  # Fjerner unødvendige kolonner
+  rename(Modstander = Modstander.x) # Omdøber Modstander.x til Modstander
+
+# Tjek datasættet for struktur og NA-værdier
+
+# bruger `glimpse` for at få et hurtigt overblik over datastrukturen.
+# Dette giver os indsigt i variabelnavne, datatyper og eksempler på værdier.
+glimpse(samlet_data)
+
+# `colSums(is.na(joins_samlet))` giver en oversigt over, hvor mange manglende værdier
+# der er i hver kolonne. Dette hjælper med at identificere variabler, der skal håndteres
+# yderligere (fx imputering af manglende værdier eller fjernelse af variabler).
+colSums(is.na(samlet_data))
+
+# Ved at kombinere disse trin sikrer vi, at det samlede datasæt er klart til
+# yderligere analyse og modellering.
+
+saveRDS(samlet_data, "data/transformed/VFF_database") # Gemmer det samlede datasæt som RDS fil
+
+# 2. Oprettelse af nye variabler ------------------------------------------
+
+VFF_database <- readRDS("data/transformed/VFF_database") # Indlæser det samlede datasæt fra RDS fil
+
+# Tilføj ugedag(Hverdag eller weekend) og årstider (4 sæsoner)
+
+# Vi tilføjer variabler, der repræsenterer ugedagen og årstiden for hver kampdato.
+# Dette kan bruges til at identificere mønstre i data, som fx hvilke ugedage eller
+# årstider der har flere VIP-guldmenuer.
+
+VFF_database$Dag <- ifelse(VFF_database$Dag %in% c("Fre", "Lør", "Søn"), "Weekend", "Hverdag") # Kategoriserer dage som Weekend eller Hverdag
+
+VFF_database <- VFF_database |> 
+  mutate(
+    Året_sæson = case_when(  # Opdel kampdato i årstider baseret på månedsnummer.
+      month(Dato) %in% c(12, 1, 2) ~ "Vinter",
+      month(Dato) %in% c(3, 4, 5) ~ "Forår",
+      month(Dato) %in% c(6, 7, 8) ~ "Sommer",
+      month(Dato) %in% c(9, 10, 11) ~ "Efterår"
+    ) |> factor(levels = c("Vinter", "Forår", "Sommer", "Efterår"))  # Sørg for logisk rækkefølge.
+  ) |> 
+  relocate(Året_sæson, .after = Dag)  # Flyt 'Året_sæson' lige efter 'Dag'.
+
+#Tilføj en ny variabel der kategoriserer modstandere baseret på gennemsnitlige guld menuer 
+
+# Beregn gennemsnitlig menuer for hver modstander og sorter
+Modstander_gennemsnit <- VFF_database %>%
+  group_by(Modstander) %>%
+  summarise(Guld_menu_stk = mean(Guld_menu_stk, na.rm = TRUE)) %>%
+  arrange(desc(Guld_menu_stk))
+
+# Kategoriser modstanderne i A, B, C baseret på percentiler
+Modstander_gennemsnit$Kategori <- cut(Modstander_gennemsnit$Guld_menu_stk,
+                                      breaks = quantile(Modstander_gennemsnit$Guld_menu_stk, 
+                                                        probs = c(0, 0.33, 0.66, 1), 
+                                                        na.rm = TRUE), 
+                                      labels = c("C", "B", "A"), 
+                                      include.lowest = TRUE)
+
+# Tilføj kategori til det oprindelige datasæt
+VFF_database <- VFF_database %>%
+  left_join(Modstander_gennemsnit %>% select(Modstander, Kategori), by = "Modstander") %>%
+  mutate(Modstander_kategori = factor(Kategori, levels = c("A", "B", "C"), ordered = TRUE)) %>%
+  select(-Kategori) # Fjern overflødig kolonne
+
+# Se resultat
+print(Modstander_gennemsnit)
+
+# Ordered factors
+VFF_database$Modstander_kategori <- factor(VFF_database$Modstander_kategori, 
+                                          levels = c("A", "B", "C"), 
+                                          ordered = TRUE) # Omdanner Modstander_kategori til ordnet faktor
+
+VFF_database$Resultat_Sidste_Kamp <- factor(VFF_database$Resultat_Sidste_Kamp, 
+                                           levels = c("V", "U", "T"), 
+                                           ordered = TRUE) # Omdanner Resultat_Sidste_Kamp til ordnet faktor
+
+VFF_database$Dag <- factor(VFF_database$Dag, 
+                          levels = c("Weekend", "Hverdag"), 
+                          ordered = TRUE) # Omdanner Dag til ordnet faktor
+
+
+VFF_database$Helligdag <- factor(VFF_database$Helligdag,
+                                levels = c("Ja", "Nej"), 
+                                ordered = TRUE) # Omdanner Helligdag til ordnet faktor
+VFF_database$Året_sæson <- factor(VFF_database$Året_sæson,
+                                  levels = c("Vinter", "Forår", "Sommer", "Efterår"),
+                                  ordered = TRUE) #Omdanner Året_sæson til ordnet faktor 
+
+str(VFF_database)
+
+# Unordered factors
+VFF_database$Modstander <- factor(VFF_database$Modstander) # Omdanner Modstander til faktor uden orden
+VFF_database$Tidspunkt <- factor(VFF_database$Tidspunkt) # Omdanner Tidspunkt til faktor uden orden
+VFF_database$Sæson <- factor(VFF_database$Sæson) # Omdanner Sæson til faktor uden orden
+table(VFF_database$Sæson)
+str(VFF_database) # Viser strukturen af det samlede datasæt
+
+#Fjerne NA-værdier for at forberede databasen til statistisk analyse 
+
+VFF_database <- na.omit(VFF_database)
+
+colSums(is.na(VFF_database)) #Tjek hvis der er NA værdier i database
+
+saveRDS(VFF_database, "data/transformed/VFF_database_clean.rds")
+
+# 3. Eksplorativ dataanalyse ----------------------------------------------
+
+VFF_database <- readRDS("data/transformed/VFF_database_clean.rds") # Indlæser det samlede datasæt fra RDS fil
+# Deskriptiv Statistik
+
+# Forstå datasetets struktur og grundlæggende tendenser
+
+summary(VFF_database) #Viser gennemsnit, median, min/max, kvartiler for numeriske variabler
+
+colSums(is.na(VFF_database)) # Antal manglende værdier pr. kolonne
+
+# Fordeling af numeriske variabler
+
+hist(VFF_database$Guld_menu_stk, main="Fordeling af Guld menuer", xlab="Menuer stk", col="blue")
+
+# Univariate analyser (fordeling af variabler)
+
+# Filtrerer datasættet til kun at indeholde numeriske variabler for at kunne 
+# udføre kvantitative analyser som korrelation og lineære modeller.
+
+VFF_numerisk <- VFF_database |> 
+  dplyr::select(where(is.numeric))
+
+# Histogrammer for at analysere fordelingen af numeriske variabler
+
+ggplot(VFF_numerisk, aes(x = Temperatur)) + geom_histogram(binwidth = 1, fill = "blue", color = "black") +
+  theme_minimal() + labs(title = "Temperaturfordeling", x = "Temperatur", y = "Antal kampe")
+
+# Boksplot for at identificere outliers
+
+ggplot(VFF_numerisk, aes(y = Guld_menu_stk)) + geom_boxplot(fill = "lightblue") +
+  labs(title = "Guld menuer - Boxplot")
+
+# Definer et layout med 2 rækker og 2 kolonner
+
+par(mfrow = c(2, 2)) #det hjælper at visualisere flere boxplot på Plots 
+
+# Lav boxplots for udvalgte variabler
+
+boxplot(VFF_database$Temperatur, main = "Temperatur", col = "lightblue")
+boxplot(VFF_database$Tilskuere_sidste_kamp, main = "Tilskuere sidste kamp", col = "lightgreen")
+boxplot(VFF_database$Vind, main = "Vind", col = "lightcoral")
+boxplot(VFF_database$Guld_menu_stk, main = "Guld menuer", col = "lightgoldenrod")
+
+# Reset layout til standard
+par(mfrow = c(1, 1))
+
+
+# Udviklingen af guld menuer i perioden
+# Visualiser udviklingen af guld menuer over tid med en linjeplot
+
+# Linjeplot for guld menuer over tid
+ggplot(VFF_database, aes(x = Dato, y = Guld_menu_stk, color = Modstander_kategori)) +
+  geom_point(alpha = 0.6) + # Tilføjer datapunkter med en vis gennemsigtighed
+  geom_smooth(method = "lm", se = FALSE) + # Tilføjer trendlinjer for hver kategori uden konfidensinterval
+  theme_minimal() + # Anvender minimal tema for plottet
+  scale_color_manual(values = c("#FFB3B3", "#B3FFB3", "#B3B3FF")) + # Definerer farver for hver kategori
+  labs(title = "Udvikling af guld menuer per Modstander Kategori", # Titel for plottet
+       x = "Dato", # X-akse label
+       y = "Guld menuer", # Y-akse label
+       color = "Modstander Kategori") + # Farvelegende label
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) # Rotér x-akse labels for bedre læsbarhed
+
+
+# Bivariate analyser (relationer mellem to variabler)
+
+# Korrelationsanalyse mellem numeriske variabler
+
+# Beregn korrelationsmatrix for numeriske variabler og afrund værdierne.
+cor_matrix <- cor(VFF_numerisk[, sapply(VFF_numerisk, is.numeric)], use = "complete.obs") 
+# Visualiser korrelationer mellem variabler.
+corrplot(cor_matrix, method = "pie", type = "full", tl.cex = 0.8, is.corr = TRUE)
+
+# Scatterplot: Temperatur vs. Guld menuer
+
+ggplot(VFF_numerisk, aes(x = Temperatur, y = Guld_menu_stk)) + 
+  geom_point() + geom_smooth(method = "lm", col = "red") +
+  labs(title = "Guld menuer vs. Temperatur")
+
+# Boksplot af guld menuer fordelt på Modstander_kategori
+
+ggplot(VFF_database, aes(x = Modstander_kategori, y = Guld_menu_stk, fill = Modstander_kategori)) + 
+  geom_boxplot() + labs(title = "Guld menuer fordelt på Modstander_kategori")
+
+# Regression Analyse 
+
+# Vi kan forudsige guld menuer baseret på vejret, modstander og andre faktorer
+# Lav en lineær model med numeriske variabler og beregn VIF.
+# Byg en lineær model for at undersøge multikollinearitet med Variance Inflation Factor (VIF).
+
+model <- lm(Guld_menu_stk ~ ., data = VFF_numerisk)
+vif_values <- vif(model)  # Beregn VIF-værdier.
+
+# A variance inflation factor (VIF) is a measure of the amount of multicollinearity in regression analysis.
+# VIF equal to 1 = variables are not correlated
+# VIF between 1 and 5 = variables are moderately correlated 
+# VIF greater than 5 = variables are highly correlated
+# I dette tilfælde har vi ikke multikolinearitet mellem variabler. 
+
+
+# 4. Forberedelse af data til modellering ---------------------------------
+
+
+# Fjernelse af irrelevante variabler
+
+# Vi fjerner variabler, der ikke er nødvendige for vores analyse eller modellering.
+# Dette inkluderer dato, modstander
+
+VFF_database <- VFF_database |>
+  select( # Vælger specifikke kolonner og fjerner Modstander, Dato fra datasættet
+    -Modstander, -Dato)
+
+
+# Konvertering af datatyper
+# sikrer, at variablerne har de rigtige datatyper (numerisk eller kategorisk),
+# som krævet for modellering og analyse.
+# Gennem glimpse funktion kan man observere hvis variablerne har de rigtige datatyper og dato, modstander, Sæson2024_2025
+# er fjernt
+
+glimpse(VFF_database)
+
+# $ Guld_menu_stk         <dbl> 791, 644, 768, 682, 748, 514, 412, 535, 68…
+# $ Temperatur            <dbl> 19.3, 19.8, 15.0, 12.6, 12.0, 4.9, 6.8, 11…
+# $ Nedbør                <dbl> 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, …
+# $ Vind                  <dbl> 4.6, 5.7, 7.2, 3.1, 2.6, 2.1, 6.7, 6.7, 1.…
+# $ Sæson                 <fct> 2013/2014, 2013/2014, 2013/2014, 2013/2014…
+# $ Dag                   <ord> Weekend, Weekend, Weekend, Weekend, Weeken…
+# $ Året_sæson            <ord> Sommer, Sommer, Efterår, Efterår, Efterår,…
+# $ Tidspunkt             <fct> Aften, Eftermiddag, Eftermiddag, Aften, Af…
+# $ Runde                 <int> 4, 6, 7, 10, 13, 17, 19, 21, 24, 25, 27, 2…
+# $ Resultat_Sidste_Kamp  <ord> U, U, V, T, V, T, U, U, T, T, U, T, T, T, …
+# $ Tilskuere_sidste_kamp <int> 4771, 9047, 5166, 8212, 4532, 7563, 3478, …
+# $ Helligdag             <ord> Nej, Nej, Nej, Nej, Nej, Nej, Nej, Nej, Ja…
+# $ Modstander_kategori   <ord> A, C, A, B, B, C, B, C, A, B, B, A, A, C, …
+
+saveRDS(VFF_database, "data/transformed/VFF_modeller.rds")
+
+# 5. Modeller ------------------------------------------------------------
+
+VFF_model <- readRDS("data/transformed/VFF_modeller.rds") # Indlæser det samlede datasæt fra RDS fil
+
+str(VFF_model)
+
+# Baseline model ----------------------------------------------------------
+
+# 0-Feature Model (Baseline)
+# En baseline-model uden nogen prædiktorer.
+# Denne model forudsiger altid middelværdien af målvariablen (Guld menu stk).
+# Bruges som referencepunkt for mere avancerede modeller.
+
+#set.seed(123)
+#set.seed() bruges til at sikre, at dine resultater er reproducerbare, 
+#når du arbejder med stokastiske (tilfældige) processer som: Tilfældig sampling (f.eks. train/test-split)
+#!!!!!!!
+#Uden set.seed(), vil R generere forskellige tilfældige tal hver gang koden køres, 
+#hvilket kan give forskellige resultater for samme model.
+
+set.seed(123)
+
+train <- sample(1:nrow(VFF_model), nrow(VFF_model) * 2/3)  # 2/3 af data som træning.
+test <- (-train)  # Resten som testdata.
+y <- VFF_model$Guld_menu_stk  # Definer målvariabel.
+y.test <- y[test]
+
+# Opret en baseline model (kun med intercept)
+glm_fit <- glm(Guld_menu_stk ~ 1, data = VFF_model[train, ])    # Kun gennemsnit
+
+# Beregn RMSE med 5-fold cross-validation
+library(boot)  # Bruges til cv.glm()
+rmse_0_cv <- sqrt(cv.glm(VFF_model[train, ], glm_fit, K = 5)$delta[1]) 
+
+# Ved 5-fold cross-validation opdeler vi datasættet i 5 lige store grupper (folds). 
+# Træningen og testen foregår i 5 runder, hvor modellen hver gang trænes på 4 
+# af foldene og testes på den sidste. Dette gentages, så hver fold én gang fungerer som testdata.
+
+# Beregn RMSE på testdata
+rmse_0_test <- sqrt(mean((VFF_model[test, ]$Guld_menu_stk - predict(glm_fit, VFF_model[test, ]))^2))
+
+# Print resultaterne
+print(paste("RMSE på Baseline model (test):", round(rmse_0_test, 4)))  
+
+
+# Lasso & Ridge Regression  -------------------------------------------------------
+
+# Definer designmatrix og målvariabel for Ridge Regression.
+
+x <- model.matrix(Guld_menu_stk ~ ., data = VFF_model)[, -1]  # Fjern intercept.
+y <- VFF_model$Guld_menu_stk # Målvariabel.
+
+set.seed(123)
+
+train <- sample(1:nrow(x), nrow(x) *2/3)#2/3 to train og 1/3 test
+length(train) #64 obs.
+test <- (-train)
+
+grid <- 10^seq(10, -2, length = 100)  # Generer 100 lambda-værdier mellem 10^10 og 10^-2.
+
+#Lasso 
+
+lasso.mod <- glmnet(x[train, ], y[train], alpha = 1, # alpha nu lig med 1
+                    lambda = grid)
+set.seed(1)
+cv.out.lasso <- cv.glmnet(x[train, ], y[train], alpha = 1,lambda=grid,nfolds=10)
+bestlam.lasso <- cv.out.lasso$lambda.min
+lasso.pred <- predict(lasso.mod, s = bestlam.lasso,
+                      newx = x[test, ])
+
+mse_lasso_test <- mean((lasso.pred - y[test])^2)
+rmse_lasso_test <-sqrt(mse_lasso_test )
+lasso_mse_cv <- min(cv.out.lasso$cvm)
+rmse_lasso_cv<-sqrt(lasso_mse_cv )
+
+# Print resultaterne
+print(paste("RMSE Lasso regression (test):", round(rmse_lasso_test, 2)))# Udskriv RMSE.
+
+
+# Her fittes modellen til ALLE data
+
+out.lasso <- glmnet(x, y, alpha = 1)
+
+lasso.coef <- predict(out.lasso, type = "coefficients", s = bestlam.lasso)
+dim(lasso.coef)  # Tjek dimensionerne
+
+lasso.coef <- predict(out.lasso, type = "coefficients", s = bestlam.lasso)[1:22, , drop = FALSE]
+print(lasso.coef) # Udskriver alle koefficienter med variabelnavne
+
+length(lasso.coef[lasso.coef != 0])#10 remaining
+prædiktorer_antal_lasso<-length(lasso.coef[lasso.coef != 0])
+print(prædiktorer_antal_lasso)
+
+# Konverter S4-objekt til en matrix
+lasso.coef.matrix <- as.matrix(predict(out.lasso, type = "coefficients", s = bestlam.lasso))
+
+# Find variabler med ikke-nul koefficienter
+selected_variables <- rownames(lasso.coef.matrix)[lasso.coef.matrix != 0]
+
+# Udskriv variablerne
+print(selected_variables)
+
+
+predicted_lasso <- predict(out.lasso, s = bestlam.lasso, newx = x)
+res_lasso <- sum((y - predicted_lasso)^2)
+tss <- sum((y - mean(y))^2)
+r_squared_lasso <- 1 - (res_lasso / tss)
+
+r_squared_lasso # 0.7039
+
+# Ridge Regression  -------------------------------------------------------
+
+ridge.mod <- glmnet(x[train, ], y[train], alpha = 0,
+                    lambda = grid)
+set.seed(123)
+cv.out.ridge <- cv.glmnet(x[train, ], y[train],nfolds = 7, alpha = 0,lambda=grid) 
+bestlam.ridge <- cv.out.ridge$lambda.min
+cv.out.ridge
+
+bestlam.ridge 
+
+ridge.pred <- predict(ridge.mod, s = bestlam.ridge, newx = x[test, ])
+mse_ridge_test <- mean((ridge.pred - y[test])^2)
+ridge_mse_cv <- min(cv.out.ridge$cvm)
+
+rmse_ridge_test <- sqrt(mse_ridge_test )
+rmse_ridge_cv<-sqrt(ridge_mse_cv)
+
+# Print resultaterne
+print(paste("RMSE Ridge regression (test):", round(rmse_ridge_test, 2)))# Udskriv RMSE.
+
+
+# Her fittes modellen til ALLE data
+
+out.ridge <- glmnet(x, y, alpha = 0)
+
+ridge.coef <- predict(out.ridge, type = "coefficients", s = bestlam.lasso)
+dim(ridge.coef)  # Tjek dimensionerne
+
+ridge.coef<-predict(out.ridge, type = "coefficients", s = bestlam.ridge)[1:22, ]
+ridge.coef
+prædiktorer_antal_ridge <- dim(x)[2]+1 #here beregner vi den intercept som coefficient Betta0
+
+# Hent koefficienter
+lasso.coef.matrix <- as.matrix(predict(out.lasso, type = "coefficients", s = bestlam.lasso))
+
+# Find variabler med ikke-nul koefficienter
+selected_variables_lasso <- rownames(lasso.coef.matrix)[lasso.coef.matrix != 0]
+
+# Udskriv variabler
+print("Valgte variabler i Lasso:")
+print(selected_variables_lasso)
+
+
+# Antal udvalgte prædiktorer
+prædiktorer_antal_lasso <- length(selected_variables_lasso) - 1  # Fratræk intercept
+print(paste("Antal valgte variabler i Lasso:", prædiktorer_antal_lasso))
+
+predicted_Ridge <- predict(out.ridge, s = bestlam.ridge, newx = x)
+res_Ridge <- sum((y - predicted_Ridge)^2)
+tss <- sum((y - mean(y))^2)
+r_squared_Ridge <- 1 - (res_Ridge / tss)
+
+r_squared_Ridge # 0. 7132 
+
+# Lasso Regression er den bedste model her, fordi:
+#   
+# Den har den laveste RMSE (114,75), hvilket betyder, at den laver færrest fejl.
+# Den har en høje R² (70,39%), hvilket betyder, at den forklarer meget variationen.
+# Lasso kan hjælpe med feature selection ved at fjerne irrelevante variabler, hvilket er nyttigt for et lille datasæt.
+
+# Best Subset selection -------------------------------------------------
+
+sum(is.na(VFF_model))
+
+vff_variabler <- VFF_model |> 
+  dplyr::select(Guld_menu_stk, Temperatur, Nedbør, Vind, Sæson, Dag, Året_sæson, 
+                Tidspunkt, Runde, Resultat_Sidste_Kamp, Tilskuere_sidste_kamp, Helligdag,
+                Modstander_kategori) |> 
+  mutate(Sæson = as.factor(Sæson),
+         Dag = as.factor(Dag),
+         Året_sæson = as.factor(Året_sæson),
+         Tidspunkt = as.factor(Tidspunkt),
+         Resultat_Sidste_Kamp = as.factor(Resultat_Sidste_Kamp),
+         Tilskuere_sidste_kamp = as.factor(Tilskuere_sidste_kamp),
+         Modstander_kategori = as.factor(Modstander_kategori),
+         Helligdag = as.factor(Helligdag)
+  ) 
+# Gem den afhængige variabel
+y <- VFF_model$Guld_menu_stk
+
+# Udfør best subset selection
+regfit.full <- regsubsets(Guld_menu_stk ~ Temperatur + Nedbør + Vind + Runde +
+                            Tidspunkt + Tilskuere_sidste_kamp + Året_sæson +
+                             Resultat_Sidste_Kamp + 
+                            Modstander_kategori + Sæson 
+                          + Dag + Helligdag ,  
+                          data = VFF_model, nvmax = 12)
+
+# Se resultaterne
+summary_reg <- summary(regfit.full)
+
+# Plot resultater for at identificere den optimale model
+par(mfrow=c(2,2))
+plot(summary_reg$rss, xlab = "Antal variabler", ylab = "RSS", type = "l")
+points(which.min(summary_reg$rss), summary_reg$rss[which.min(summary_reg$rss)], 
+       col = "red", cex = 2, pch = 20)
+
+plot(summary_reg$adjr2, xlab = "Antal variabler", ylab = "Justeret R^2", type = "l")
+points(which.max(summary_reg$adjr2), summary_reg$adjr2[which.max(summary_reg$adjr2)], 
+       col = "red", cex = 2, pch = 20)
+
+plot(summary_reg$cp, xlab = "Antal variabler", ylab = "Cp", type = "l")
+points(which.min(summary_reg$cp), summary_reg$cp[which.min(summary_reg$cp)], 
+       col = "red", cex = 2, pch = 20)
+
+plot(summary_reg$bic, xlab = "Antal variabler", ylab = "BIC", type = "l")
+points(which.min(summary_reg$bic), summary_reg$bic[which.min(summary_reg$bic)], 
+       col = "red", cex = 2, pch = 20)
+
+
+coef(regfit.full, 5)
+
+
+set.seed(123)
+train_index <- sample(1:nrow(VFF_model), 0.7*nrow(VFF_model))
+train_data <- VFF_model[train_index,]
+test_data <- VFF_model[-train_index,]
+
+# Udfør best subset selection på træningsdata
+regfit.full <- regsubsets(Guld_menu_stk ~ Runde + 
+                            Modstander_kategori +
+                            Sæson + Tilskuere_sidste_kamp,
+                          data = train_data, nvmax = 5)
+
+
+final_model <- lm(Guld_menu_stk ~ Runde + Modstander_kategori +
+                    Sæson + Tilskuere_sidste_kamp,
+                  data = train_data)
+
+
+predictions_train <- predict(final_model, newdata = train_data)
+rmse_subset_train <- sqrt(mean((train_data$Guld_menu_stk - predictions_train)^2))
+predictions <- predict(final_model, newdata = test_data)
+rmse_subset_test <- sqrt(mean((test_data$Guld_menu_stk - predictions)^2))
+
+print(paste("RMSE på test data:", round(rmse_subset_test, 2))) #RMSE
+
+
+# Sammenligning af modeller -----------------------------------------------
+
+
+# Beregn RMSE for hver model
+baseline_rmse <- rmse_0_test  # RMSE for baseline-modellen.
+ridge_rmse <- rmse_ridge_test  # RMSE for Ridge Regression.
+lasso_rmse <- rmse_lasso_test  # RMSE for Lasso Regression.
+best_subset <- rmse_subset_test # RMSE for Best Subset Selection.
+
+# Opret en tibble til sammenligning af modeller
+sammenligning_modeller <- data.frame(
+  Model = c("Baseline", "Ridge", "Lasso", "Best Subset Selection"),  # Navne på modeller.
+  RMSE = c(baseline_rmse, ridge_rmse, lasso_rmse, best_subset)  # RMSE-værdier.
+)
+
+print(sammenligning_modeller) # Print resultattabel
+
+# Visualisering af RMSE
+
+# Diagram der sammenligner RMSE (Root Mean Square Error) for de forskellige modeller.
+ggplot(sammenligning_modeller, aes(x = Model, y = RMSE)) +
+  geom_col(fill = "grey") +  # Søjlediagram med farven 'grey'.
+  geom_text(aes(label = round(RMSE, 2)), vjust = -0.5) +  # Tilføj RMSE-værdier som tekst over søjlerne.
+  labs(
+    title = "RMSE for Modeller",  # Titel på plottet.
+    x = "Model",                 # Navn på x-aksen.
+    y = "RMSE"                   # Navn på y-aksen.
+  ) +
+  theme_classic()
+
+# Residual plot for Lasso model -------------------------------------------
+
+
+# Residuals repræsenterer forskellen mellem de faktiske værdier (y.test) og de forudsagte 
+# værdier fra Lasso-modellen (lasso.pred). 
+# De hjælper med at evaluere modellens præcision og afsløre potentielle problemer.
+
+lasso_residuals <- y.test - as.numeric(lasso.pred)  
+# y.test er de faktiske værdier fra testdatasættet, mens as.numeric(lasso.pred)
+# konverterer forudsagte værdier til numerisk format, hvis de ikke allerede er det.
+
+
+# Opretter en data frame med tre kolonner:
+# - `Actual`: De faktiske værdier (y.test).
+# - `Predicted`: De forudsagte værdier fra modellen.
+# - `Residuals`: Beregnede residuals (fejl).
+
+lasso_residuals_df <- data.frame(
+  Actual = y.test,                     # Faktiske værdier fra testdata.
+  Predicted = as.numeric(lasso.pred),  # Forudsagte værdier fra modellen.
+  Residuals = lasso_residuals          # Residuals, dvs. fejl (Actual - Predicted).
+)
+
+# Visualisering af residualerne fra Lasso-modellen.
+# Formålet med denne plot er at identificere, om der er systematiske fejl i modellen.
+
+ggplot(lasso_residuals_df, aes(x = Predicted, y = Residuals)) +
+  geom_point(alpha = 0.5) +  # Scatter plot med lidt transparens for bedre overblik.
+  geom_hline(yintercept = 0, linetype = "dashed", color = "blue", size = 2) +
+  labs(
+    title = "Residual plot for Lasso-modellen",
+    x = "Forudsagte værdier (Predicted)",
+    y = "Residuals (Actual - Predicted)"
+  ) +
+  theme_grey()
+
+# Evaluering af residualplot for Lasso-modellen:
+
+# Residualerne generelt er spredt omkring 0-linjen, hvilket indikerer, at modellen har en rimelig god performance uden systematiske fejl.
+# Der er enkelte større residualer, især for observationer med høje værdier. 
+# Dette kan tyde på, at modellen ikke forudsiger disse observationer korrekt. 
+
+
+
+# Histogrammet viser fordelingen af residualerne. 
+# En normalfordeling uden ekstremt skæve værdier indikerer en velfungerende model.
+
+ggplot(lasso_residuals_df, aes(x = Residuals)) +
+  geom_histogram(bins = 10, fill = "blue", alpha = 0.7, boundary = 0) +
+  labs(
+    title = "Histogram over residuals fra Lasso-modellen",
+    x = "Residuals",
+    y = "Frekvens"
+  ) +
+  theme_grey()
+
+# Evaluering af histogrammet over residuals fra Lasso-modellen:
+
+# Histogrammet viser, at størstedelen af residualerne stadig er centreret tæt på 0, 
+# hvilket er positivt og indikerer, at modellen generelt klarer sig godt.
+# Der er flere outliers i den positive ende, især omkring residualværdier tæt på 300. 
+# Dette kan være observationer, som modellen har svært ved at forudsige korrekt.
+# Vi bemærker også, at fordelingen er højreskæv, hvilket kan antyde, 
+# at der er systematiske fejl, som kunne forbedres gennem yderligere analyse.
+
+
+# Gennem analyser af residualplottet, histogrammet over residualerne
+# konkluderer jeg, at Lasso-modellen generelt præsterer godt med en fornuftig fordeling af residualerne omkring nul 
+# og en tæt sammenhæng mellem faktiske og forudsagte værdier. 
+# Modellen viser dog svagheder i form af outliers og en potentiel bias, især i dens evne til at forudsige ekstreme værdier. 
+# Histogrammet afslørede, at residualerne ikke er helt normalfordelte, hvilket indikerer, at der kan være mønstre eller systematiske fejl i modellen.
+
+# For at forbedre modellen skal man:
+# 1) Undersøge yderligere variabler, der kan inkluderes i modellen, for at fange mere kompleks adfærd blandt VIP-gæsterne.
+# 2) Overveje alternative modeller for at håndtere eventuel bias og forbedre modellens performance.
+```
+
+# Resumé
+
+Projektet fokuserer på udvikling og implementering af en datadrevet prædiktionsmodel for at forudsige antallet af VIP-gæster, der spiser guldmenuer hos Viborg F.F. Analysen transformerer et forretningsproblem til et datamining-problem, som løses gennem forskellige statistiske modeller. Formålet er at udvikle en datadrevet løsning, der understøtter Viborg F.F.’s kommercielle afdeling i at optimere udnyttelsen af guldmenuer ved hjemmekampe for at reducere madspild og på den samme måde at optimere ressourcestyringen.
+
+Projektet følger CRISP-DM-modellen for at strukturere arbejdet med interne og eksterne data fra forskellige kilder, samt med at bygge og analysere modeller, såsom baseline-modellen, Ridge Regression, Lasso Regression og Best Subset Selection, hvor Lasso blev valgt som den bedste model på testdata. Det er tydeligt at der er begrænsninger i præcision af modellen, fordi nogle faktorer ikke var tilføjet i analysen.
+
+For at vurdere VFF’s markedsposition og konkurrenceevne bruges Porter’s Five Forces, som analyserer eksterne miljø og forstå de kræfter, der påvirker klubbens kommercielle aktiviteter. For at styrke Viborg F.F.’s position og reducere presset fra eksterne kræfter, er det nødvendigt at implementere en datadrevet tilgang. Denne tilgang kan skabe bedre indsigt i VIP-gæsternes adfærd, optimere ressourcestyringen og øge kundetilfredsheden.
+
+Alexandramodellen viste, at VFF befinder sig på et lavt niveau af datamodenhed, hvilket kræver investering i bedre datasystemer, samt med at investere i medarbejdere for at få et bedre niveau af forståelse og viden om it-systemer og data.
+
+Implementeringen af modellen blev struktureret efter Kotters 8-trins model for at sikre effektiv forandringsledelse. På trods af lav præcision har modellen potentiale til at understøtte en datadrevet tilgang, hvis den suppleres med kvalitative undersøgelser af VIP-gæsternes adfærd og yderligere datainitiativer.
+
+Løsningsforslagene inkluderer oprettelsen af et centralt datasystem, som kan indsamle oplysninger fra eksisterende platforme gennem API-integration. Derudover anbefales det at gennemføre kvalitative undersøgelser af VIP-gæsternes adfærd, løbende opdatere modellen og sikre et tættere samarbejde mellem afdelingerne. Dette vil styrke beslutningsgrundlaget og optimere ressourceforvaltningen i VIP-segmentet.
+
+\newpage
+
+# Indledning
+
+I en tid, hvor det bliver stadig vigtigere at træffe datadrevne beslutninger, står sportsorganisationer som Viborg Fodsports Forening (VFF) over for et øget behov for effektiv dataudnyttelse. VFF, en dansk fodboldklub med dybe rødder i lokalsamfundet, spiller en vigtig rolle både på banen og kommercielt. Ud over klubbens sportslige ambitioner arbejder VFF også målrettet på at styrke deres kommercielle aktiviteter, herunder samarbejdet med sponsorer og VIP-gæster for at skabe fællesskaber og oplevelser der er blandt de bedste i Danmark. 
+
+Palle Nielsen nævner at: *”Og vi arbejder på rigtig mange andre parametre eller på parametre for at øge det her, blandt andet med hospitality og den der service, altså hele service koncept, Så det er jo både det udtryk vi har. Det skal være rent, det skal være lækkert når man kommer der. Vi arbejder meget i det der med at prøve at skabe oplevelser rundt på hele stadion, men også i vores hospitality-del. Så hvis der er et tema på, som for eksempel Halloween eller efterår, så bygger vi det hele vejen rundt og vi gør meget ud af at snakke med personalet om, hvordan vi servicerer vores gæster på den bedste måde. Så det er jo hele tiden med at skabe oplevelsen og forbedre det.”* (Bilag 1)
+
+Ved hjemmekampe på Energi Viborg Arena uddeler Viborg F.F. et fast antal VIP-billetter til deres samarbejdspartnere. Klubben har dog ikke et klart overblik over, hvor mange af billetterne der faktisk bliver brugt til hver kamp. Denne usikkerhed skaber udfordringer i planlægningen og kan føre til spild af ressourcer, for eksempel i form af overflødige kuverter og unødvendige indkøb.
+
+Under projektforberedelserne blev data- og marketingafdelingen hos Viborg F.F. interviewet for at få en dybere forståelse af de udfordringer, de står overfor. Billet- og stadionansvarlig Palle Nielsen påpeger, at der er behov for bedre indsigt i brugen af billetter. Han nævner, at det vil være værdifuldt at analysere forskellen mellem det antal billetter, der tilbydes partnerne, det antal billetter, de afhenter, og hvor mange personer der faktisk møder op. Han fremhæver også, at tilmeldinger til kampene er nødvendige for at undgå unødvendigt ressourcespild. Det gør det muligt for klubben at tilpasse forberedelserne, såsom borddækning og madindkøb, til det faktiske antal fremmødte, hvilket mindsker spild. 
+
+Palle Nielsen nævner at: *”Det der med at skabe de bedste oplevelser i Danmark, det kan man have meget svært ved med sådan et halvtomt stadion men den der stemning, der bliver, jo flere mennesker der sidder samlet, jo bedre bliver den, jo flere mennesker vi kan køre igennem jo større muligheder har vi for at udvikle på vores tilbud, når man ikke bare sidder inde på sin plads, men også er i boderne og handle, og den oplevelse man har udenfor, Den bliver også bedre jo flere mennesker der er, fordi det hele gør jo, at vi kan lave en bedre forretning på det, og derfor kan vi udvikle på tilbud af mad for eksempel, så det ikke kun er en stadionplatte, men der også er alle mulige andre tilbud, man kan få.”*(Bilag 1)
+
+For at sikre optimal udnyttelse af deres VIP-faciliteter er det essentielt for VFF at kunne forudsige VIP-gæsternes deltagelse. Dette projekt fokuserer på at udvikle en praktisk og datadrevet løsning, der ved hjælp af data fra kilder som Superstats.dk og Dmi.dk kan hjælpe VFF’s kommercielle afdeling med at skabe større værdi for sponsorer, forbedre kundeoplevelsen og maksimere indtægterne.
+
+# Problemformulering 
+
+Hvordan kan Viborg F.F. implementere dataløsninger, der effektivt forudsiger, hvor mange VIP-gæster med Guld Menu der møder op til hjemmekampe? Hvordan kan denne implementering planlægges og gennemføres, så den bidrager til bedre planlægning, optimere ressourcestyring, med fokus på en sikre effektiv forandringsproces i organisationen? 
+
+Det er også vigtigt at opdele det på flere sekunderespørgsmål, der har fokus på modellen, systemkrav og datamodenhed: 
+
+Hvordan kan en prædiktionsmodel bruges til at forudsige antallet af guldmenuer blandt VIP-gæster, og hvilke typer data og analysemetoder kan benyttes til at understøtte denne forudsigelse? 
+
+Hvordan vurderes klubbens aktuelle datamodenhed ud fra indsamling af, opbevaring og analyse af data?
+
+Hvilke systemkrav er nødvendige for at implementere en prædiktionsmodel, og hvordan matcher den eksisterende IT-infrastruktur og ressourcer i klubben? 
+
+\newpage
+
+# Afgrænsning 
+
+Projekt fokuserer på data, der er afgrænset til de sæsoner, hvor VFF har spillet i Superligaen, som starter fra 2013. 
+
+Covid-19-restriktioner i 2019-2020 påvirkede negativt tilskuertal, så det er fordi disse sæsoner blev udeladt fra analyse, for at undgå potentielle forvridninger af resultaterne. 
+
+Derudover er projekt afgrænset til klubbens VIP-gæster som repræsenterer partners og individuelle billetkøbere, der har adgang til eksklusive faciliteter, ydelser og oplevelser i forbindelse med kampdage eller andre arrangementer hos VFF. 
+
+Jeg har valgt at arbejde med data fra Superstats.dk om kampresultater og tilskuertal, kombineret med DMI’s vejrdata og helligdage-data, samt et udleveret Excel ark med information om guldmenuer, som er afgrænset i tidsperioden, nemlig på 10 år.
+
+Prædiktionsmodellen udvikles og testes ved brugen af R softwareprogrammet, der repræsenterer en programmering spørg ift. det studiecase. 
+
+Datagrundlaget for prædiktionsmodellen kan variere i kvalitet, især hvis der er ufuldstændige eller forældede data fra tidligere kampe.
+
+Interviewdata kan være påvirket af subjektive holdninger, hvilket kan medføre bias i tolkningen af resultaterne.
+
+Validiteten af modellen kan begrænses, hvis der opstår uforudsete ændringer i VIP-gæsters adfærd, som ikke tidligere er blevet analyseret eller inkluderet i datagrundlaget.
+
+# AI Chatbots
+
+I forbindelse med dette projekt blev ChatGPT 4 brugt som en kilde til inspiration og som sparringspartner. Værktøjet blev anvendt til at forbedre sproget og grammatikken samt til støtte inden for områder som programmering, statistik og udarbejdelse af grafer. Det skal understreges, at svar fra ChatGPT 4 ikke blev anvendt direkte til at besvare opgaven. 
+
+# Definitioner
+
+I dette projekt refererer VIP-gæster til klubbens partnere samt individuelle billetkøbere, der har adgang til at nyde guldmenuer i forbindelse med hjemmekampe.
+Forkortelsen VFF bruges som en erstatning for Viborg F.F. for at reducere antallet af tegn og gøre teksten mere læsevenlig.
+
+# Tabel over figurer
+
+**Figur 1:** VFF datasæt med varibler og typer af variabler.
+
+**Figur 2:** Korrelationsmatrix for numeriske variabler.
+
+**Figur 3:** Udvikling af antallet af guld menuer per modstander kategori i perioden 2014-2024.
+
+**Figur 4:** Bar-chart af RMSE for alle fire modeller.
+
+\newpage
+
+# Videnskabsteori og Metode
+
+I dette projekt er **pragmatismen** anvendt som videnskabsteoretisk tilgang, fordi vægtet er på at finde praktiske løsninger, der skaber værdi for VFF. Fokus ved pragmatismen er på handling og resultater frem for teoretiske idealer, og dens centrale princip er, at sandhed og viden vurderes ud fra deres anvendelighed i praksis (Egholm, L. (2014)). Ifølge Dewey J. (1931) skal viden være funktionel og bidrage til løsning af reelle problemer, hvilket er i tråd med projektets mål.
+
+Denne tilgang har været afgørende for at udvikle en datadrev løsning til at forudsige antallet af VFF-s VIP-gæster med guldmenu. Ved at kombinere dataanalyse og praktiske overvejelser sigter projektet mod at forbedre planlægning og ressourceoptimering i klubbens kommercielle afdeling. Som Morgan D. (2014) fremhæver, er pragmatismen særlig velegnet, når komplekse problemer skal løses gennem en kombination af kvantitative og kvalitative metoder.
+
+I praksis har pragmatismen guidet valget af metoder og værktøjer, herunder brugen af data fra Superstats.dk og Dmi.dk samt interviews med nøglepersoner i klubben. Dette metodemix sikrer, at løsningen både er datadrevet og tilpasset til VFF’s specifikke behov. Som Patton M. (1990) bemærker, handler pragmatisme om at vælge de metoder, der bedst besvarer forskningsspørgsmålene og skaber målbare resultater, hvilket har været en grundlæggende tilgang i projektets udvikling.
+
+I dette projekt er **forskningsdesignet** baseret på en **abduktiv tilgang** for at identificere mønstre og sammenhænge i data om VIP-gæsternes fremmøde og brugen af guldmenuer. Udgangspunktet var en praktisk problemstilling, hvor klubben manglede indsigt i fremmødet blandt VIP-gæster. Det hjælper med at generere plausible forklaringer og udvikle en prædiktionsmodel, der ikke blot baserer sig på observationer, men også på en teoretisk forståelse af de faktorer, der påvirker fremmødet.
+
+**Dataindsamlingen** kombinerer **kvalitative** og **kvantitative** data. Kvalitative data repræsenterer data fra to semistrukturerede interviews med nøglepersoner fra VFF. Den første interview inkluderede medarbejdere fra data- og marketingafdelingen med fokus på data, virksomhedens struktur og gæsternes adfærd, mens det andet interview havde fokus på arbejdsprocesser og teknologiske programmer, der hjælper praktikanter med deres daglige opgaver. De studerende var til stede ved disse to interviews, og repræsentanter for hver gruppe fik til opgave at stille de specifikke spørgsmål til spørgeskemaet.
+
+Den **kvantitative** del af det empiriske grundlag stammer fra forskellige datakilder, såsom **Superstats.dk**: For at få indsigt i tidligere kampdata, tilskuerantal og potentielle mønstre i publikumsadfærd. **Dmi.dk**: Bruges til at inkludere vejrdata, da vejret kan have en indvirkning på tilskuerfremmødet og VIP-gæsters deltagelse. **Klubbens interne data**: Dette inkluderer information om antallet af guldmenuer, VIP-menu, kapacitet og biletter. 
+
+## Modelvalg til dataanalyse 
+
+Den prædiktionsmodel blev skabt gennem indsamlingen og analysen af data fra sekundære kilder, såsom Superstats.dk, DMI.dk og Helligdag i Danmark og interne data fra VFF. CRISP-DM-modellen skabte den strukturerende tilgang til dataanalyse. Modellen guider os gennem de nødvendige faser, fra problemforståelse og dataindsamling til udvikling og implementering af prædiktionsmodellen for VIP-gæsters fremmøde.
+
+Integrationen af prædiktionsmodellen i VFF’s systemer er vigtigt, fordi vil det optimere planlægningen af menuer og minimere ressourcespild. For at sikre, at modellen skaber værdi og understøtter VFF’s konkurrenceevne, analyseres dens implementering med udgangspunkt i Porter's Five Forces. Prædiktionsmodellen kan styrke VFF's konkurrenceevne ved at forbedre effektiviteten og differentiere klubben gennem bedre ressourceplanlægning og VIP-oplevelser, hvilket gør det sværere for nye aktører at opnå lignende fordele.
+
+ Alexandra-modellen anvendes til at analysere VFF’s datamodenhed, og understøtter implementering af prædiktionsmodellen i klubbens eksisterende ressourcestyringssystemer, så den bliver en del af de daglige processer. Modellen hjælper med at koble tekniske løsninger som prædiktionsmodellen til konkrete forretningsbehov og processer i Viborg F.F. Kotters model er nødvendig for at sikre, at den organisatoriske modning omkring dataanvendelse bliver en succes, og at de nødvendige kulturelle og procesmæssige ændringer finder sted.
+ 
+## Validitet og reliabilitet
+
+Validiteten i projektet handler om, hvorvidt de anvendte metoder og data reelt måler og understøtter den problemstilling. For at sikre intern validitet er der blevet anvendt interviews med nøglepersoner i VFF og analyseret relevante datakilder. Dette sikres, at konklusioner er baseret på pålidelige og relevante inputs.
+
+Reliabiliteten handler om projektets pålidelighed, dvs. om metoderne og resultaterne kan gentages og føre til samme konklusioner: de anvendte datakilder og metoder (CRISP-DM) sikres, at processen er reproducerbarhed. Ved at dokumentere alle trin i dataindsamling, forberedelse og modellering kan andre følge samme fremgangsmåde og opnå sammenlignelige resultater.
+
+\newpage
+
+# Analyse
+
+## Forretningsforståelse 
+
+VFF er ikke blot en fodboldklub, men også en organisation, der søger at skabe værdifulde oplevelser for sine partnere, fans og VIP-gæster. Klubben arbejder på at optimere ressourceforbruget ved deres hjemmekampe på Energi Viborg Arena, hvor de blandt andet tilbyder VIP-gæster med guldmenu særlige oplevelser. Palle nævnte: *”Så det er jo hele tiden med at skabe oplevelsen og forbedre det.”* (Bilag 1)
+
+Organisatorisk er VFF opdelt i flere nøglefunktioner, herunder sportsafdelingen, kommercielle afdelinger og drifts- og logistikfunktioner, der samarbejder om at levere en helhedsoplevelse på kampdage. Daniel nævnte at der er mellem 20-25 medarbejdere i administrationen og operationelle afdelinger, samt med frivillige, som hjælper på kampdage ift. særlige tilfælde. Han nævnte: *” Og der er cirka 200 frivillige, som ligesom er folk, der står i boder og laver andet arbejde…, … Og så er vi selvfølgelig nogen for en dataafdeling. Det tror jeg også. Og vi selvfølgelig en direktør og en økonomidirektør oppe over det hele kommercielt. Så vi er vel en 20-25 i alt.”* (Bilag 2)
+
+Kulturelt af VFF er præget af værdier som engagement, samarbejde og professionalisme, men organisationen oplever også visse udfordringer. Datamodenheden er relativt lav, og mange afdelinger arbejder isoleret, hvilket skaber siloarbejde og begrænser det tværgående samarbejde. Dette gør det vanskeligt at udnytte potentialet i datadrevne løsninger. Samtidig peger interviews på, at der er en positiv holdning blandt medarbejderne til at øge brugen af data i beslutningsprocesser. Som Daniel forklarer: *”Jeg oplever faktisk at generelt er folk gode til det, hvis de bliver præsenteret i en figur f.eks. Min oplevelse er, at folk sidder med enormt store Excelark og så prøver de at lave mening ud af det. Jeg synes faktisk at folk er generelt gode til, når det bliver præsenteret i en PowerPoint, at der er så mange udnyttelsesgradværdier i forskellige områder af stadion for eksempel. Altså, så er folk faktisk gode til at forstå det. Jeg ved ikke, om det besvarede spørgsmålet. Jeg har ikke så...”* (Bilag 2)
+
+Teknologi spiller en central rolle i VFF's drift. Klubben anvender forskellige systemer såsom Joomla til deres hjemmeside Vff.dk, Shopify til Kløvershoppen, Eventii til billetsalg, CRM-platforme til partnerhåndtering, Playable til konkurrencer og MailChimp til e-mailmarkedsføring (Tea Nørgaard, Marketingpræsentation 2024). IT-chef Daniel Behr understreger: *"Vi har ekstremt mange forskellige systemer, der indeholder data."* (Bilag 2).
+
+## Porter’s Five Forces
+
+Ved at adressere de fem aspekter i Porter's Five Forces kan VFF styrke deres strategiske position. Især kan de reducere trusler fra substitutter og rivalisering ved at implementere datadrevne løsninger, der skaber en unik og værdifuld oplevelse for deres VIP-gæster og samarbejdspartnere. Fokus på kundeoplevelse og effektiv ressourceudnyttelse er afgørende for at fastholde en stærk position i et konkurrencepræget marked. (Bilag 3)
+
+## Alexandra modellen
+
+De fem faser for forandring kan hjælpe VFF med at udvikle en datadrevet kultur, der kan optimere ressourcestyring og beslutningstagning. Fra den første fase, hvor data opsamles og bearbejdes, til den femte fase, hvor VFF indgår i et økosystem af data med eksterne partnere, kan hver fase støtte VFF i at blive mere datadrevne og konkurrencedygtige. (Bilag 4) 
+
+VFF er primært i fase 2 og 3 i Alexandra-modellen, hvor de arbejder med at lære om forretningen og begynde at bruge data som en strategisk ressource. For at bevæge sig mod fase 4 og 5 skal de fokusere på at implementere automatiserede løsninger som API’er, og fremme en datadrevet kultur i organisationen.
+
+\newpage
+
+# Prediktionsmodellen
+
+## Dataanalyse 
+
+Projektet fokuserer på at forudsige antallet af guldmenuer blandt VIP-gæster. Datasættet blev skabt med data fra Excel-ark, kampdata fra Superstats.dk, vejrobservationer fra DMI’s API og Helligdag i Danmark. 
+
+## Dataforståelse og forberedelse 
+
+Den afhængige variabel er ”guld_menu_stk”, der repræsenterer antallet af afhente guld menuer. Forklarende variabler inkluderer vejrforhold, tilskuertal, kampdato og modstanders kategori.
+
+Datasættet blev renset og transformeret i RStudio, hvor NA værdier blev håndteret, korrelationsmatrix blev analyseret for at identificere lineære sammenhænge, og reducerede risikoen for multikollinearitet. 
+
+```{r, echo=FALSE}
+#| fig-cap: "Figur 1. VFF datasæt med varibler og typer af variabler."
+#| warning: false
+
+glimpse(VFF_database)
+
+```
+
+## Explorative analyse
+
+Den eksplorativ analyse inkluderer histogrammer, scatterplots og korrelationsmatrix for at identificere mønstre og sammenhænge. 
+
+```{r, echo=FALSE}
+#| fig-cap: "Figur 2. Korrelationsmatrix for numeriske variabler."
+#| warning: false
+library(corrplot)
+# Beregn korrelationsmatrix for numeriske variabler og afrund værdierne.
+cor_matrix <- cor(VFF_numerisk[, sapply(VFF_numerisk, is.numeric)], use = "complete.obs") 
+# Visualiser korrelationer mellem variabler.
+corrplot(cor_matrix, method = "pie", type = "full", tl.cex = 0.8, is.corr = TRUE)
+
+```
+
+Korrelationsmatrix viser at:
+
+•	**Guld_menu_stk** har en stærk positiv korrelation med **Tilskuere_sidste_kamp**.
+
+•	**Temperatur** har en positiv korrelation med **Guld_menu_stk**.
+
+•	**Nedbør** ser ud til at have en svag negativ korrelation med flere variabler.
+
+•	**Vind** viser en blanding af korrelationer, men har en stærk sammenhæng med **Nedbør**.
+
+•	**Runde** har visse svage korrelationer, men ingen stærke negative. 
+
+```{r, echo=FALSE}
+#| fig-cap: "Figur 3. Udvikling af antallet af guld menuer per modstander kategori i perioden 2014-2024."
+#| warning: false
+
+VFF_database <- readRDS("data/transformed/VFF_database_clean.rds")
+# Linjeplot for guld menuer over tid
+ggplot(VFF_database, aes(x = Dato, y = Guld_menu_stk, color = Modstander_kategori)) +
+  geom_point(alpha = 0.6) + # Tilføjer datapunkter med en vis gennemsigtighed
+  geom_smooth(method = "lm", se = TRUE) + # Tilføjer trendlinjer for hver kategori med konfidensinterval
+  theme_minimal() + # Anvender minimal tema for plottet
+  labs(title = "Udvikling af guld menuer per Modstander Kategori", # Titel for plottet
+       x = "Dato", # X-akse label
+       y = "Guld menuer", # Y-akse label
+       color = "Modstander Kategori") # Farvelegende label
+
+```
+
+For at se hvordan antallet af guld menuer har udviklet sig over perioden, er der lavet et linjeplot. Linjeplottet viser at for alle tre kategorier, har været en støt positiv udvikling i antallet gennem perioden.
+
+
+## Modeludvælgelse
+
+Datasæt blev opdelt i trænings- og testdata (2/3 træning og 1/3 test) for at sikre, at modellen kunne generalisere til nye data. Desuden blev 5-fold krydsvalidering brugt til at optimere parametrene for Ridge og Lasso Regression og reducere risikoen for overfitting.
+
+```{r, echo=FALSE}
+#| fig-cap: "Figur 4: Bar-chart af RMSE for alle fire modeller."
+#| warning: false
+
+# Opret en tibble til sammenligning af modeller
+sammenligning_modeller <- data.frame(
+  Model = c("Baseline", "Ridge", "Lasso", "Best Subset Selection"),  # Navne på modeller.
+  RMSE = c(baseline_rmse, ridge_rmse, lasso_rmse, best_subset)  # RMSE-værdier.
+)
+
+# Visualisering af RMSE
+
+# Diagram der sammenligner RMSE (Root Mean Square Error) for de forskellige modeller.
+ggplot(sammenligning_modeller, aes(x = Model, y = RMSE)) +
+  geom_col(fill = "grey") +  # Søjlediagram med farven 'grey'.
+  geom_text(aes(label = round(RMSE, 2)), vjust = -0.5) +  # Tilføj RMSE-værdier som tekst over søjlerne.
+  labs(
+    title = "RMSE for Modeller",  # Titel på plottet.
+    x = "Model",                 # Navn på x-aksen.
+    y = "RMSE"                   # Navn på y-aksen.
+  ) +
+  theme_classic()
+```
+
+I projektet blev fire modeller testet, for at finde den mest effektive metode til at forudsige antallet af guld menuer. Den første model, Baseline-modellen, forudsagde middelværdien uden forklarende variabler (RMSE = 164.99). Ridge Regression inkluderede alle forklarende variabler og reducerede RMSE til 121.9, hvilket forbedrede præcision sammenlignet med baseline-modellen. Lasso Regression opnåede en RMSE på 114.75, og forenklede modellen ved at udvælge de mest relevante variabler. Best Subset Selection havde en RMSE på 120.28 og brugte 5 relevante variabler for at forudsige antallet af guld menuer.
+
+Lasso Regression blev valgt på grund af dens evne til at reducere variabler uden væsentligt præcisionstab. Modellen har den mindske RMSE (114.75) værdi og den største R^2, nemlig 70.39 % og inkluderede ti nøglevariabler, hvor de mest betydningsfulde var "Sæson", "Året_sæson",           "Tidspunkt", "Runde", "Resultat_Sidste_Kamp", "Tilskuere_sidste_kamp", "Modstander_kategori".
+
+## Konklusion 
+
+Lasso Regression-modellen viser potentiale til at forudsige antallet af VIP-guldmenuer, men kræver yderligere variabler og løbende opdateringer for at forbedre præcisionen, og gøre den praktisk anvendelig. For at gøre modellen mere anvendelig, kan man analysere VIP-gæsters adfærd, opdatere modellen med nye data og udvikle en ny variabel for sponsorers brugeradfærd i forhold til guldmenuer.
+
+# Kotters 8-trins model 
+
+Kotters 8-trins model strukturerer implementering af en prediktionsmodel i VFF. Processen starter med Palles Nielsens bemærkninger om madspild og unødvendigt arbejde i VIP-loungen. Dette skal motivere medarbejdere og skaber dem en forståelse for implementering af forandring. En stærk koalition mellem nøglepersoner, såsom Daniel B., Tea P., Palle N. og Christian S. kan have en gavnlig indflydelse på forandring processen. Daniel B. bidrager med teknisk indsigt og dataudvikling, Tea P.  assisterer med dataindsamling og marketing, Palle N. håndterer billetter og daglige operationer, og Christian S. repræsenterer partnernes interesser.
+
+\newpage
+
+# CRISP-DM
+
+Projektet blev struktureret efter CRISP-DM-modellen, for at sikre en fokuseret tilgang, hvor de seks faser guidede dataanalysen, og gjorde den relevant for problemstillingen.
+
+**Business understanding**
+
+Virksomhedens udfordringer og behov blev identificeret gennem primære datakilder. Selvom VIP-gæster ikke blev betragtet som en problematik af VFF, fremhævede data og underviserens vejledning dette som et fokusområde for projektet.
+
+**Data understanding**
+
+Denne fase indebærer samlede af data fra forskellige kilder som VIP-guldmenu fra Excel-ark, kampdata fra Superstats.dk via webscraping, meteorologiske observationer fra DMI og helligdag i Danmark. Disse blev kombineret baseret på kampdatoer for at sikre sammenhæng og relevans. Den valgte outputvariabel var antallet af VIP-guldmenuer, og forklarende variabler inkluderede vejrdata, kampstatistikker og faktorer som fx ugedag, måneder, sæson, helligdage. 
+
+**Data preperation**
+
+Rådata klargøres til analyse gennem datarensning, transformation og oprettelse af nye variabler. Nye variabler som tilskuertal ved sidste møde, året sæson, modstander kategori blevet tilføjet. Datasættet var derefter klar til modellering.
+
+**Modelling**
+
+Fire modeller blev evalueret: Baseline-modellen, Ridge Regression, Lasso Regression og Best Subset Selection. Lasso Regression blev valgt, på grund af den reducerede antallet af variabler uden væsentligt præcisionstab, med en RMSE på 114.75 og en forklaringsgrad på kun 70.39%, hvilket indikerer manglende faktorer i datasættet.
+
+**Evaluation**
+
+Resultaterne viste, at modellen ikke kunne levere præcise forudsigelser af antallet af VIP-gæsters guldmenuer. Mængde af data reducerer modellens præcision betydeligt.
+
+**Deployment**
+
+Implementeringsfasen fokuserede på implementering af prædiktionsmodellen i VFF for at skabe en datadrevet tilgang. Med fokus på Kotters 8-trins model blev det etableret som en fælles forståelse for modellens potentiale (Trin 1) og en styrende koalition på tværs af nøgleafdelinger blev oprettet (Trin 2). Modellens lave præcision understreger behovet for yderligere data og implementering for at styrke datakvalitet, samarbejde g en datadrevet kultur (Trin 6-8).
+
+\newpage
+
+# Anbefalinger
+
+I forhold til prædiktionsmodel anbefales det, at VFF skal indsamle data om netværksaktiviteter, samt med analyserer at VIP-gæsternes adfærd, for at identificere årsager til udnyttelsesgrad.
+Dataafdelingen bør opdatere modellen og tilføje de nye data for at have et bredt overblik over de faktorer, der påvirker VIP-gæsternes deltagelse i kampe, derfor kan de forbedre modellens præcision. 
+
+En kvalitativ undersøgelse hos VIP-gæsterne kan hjælpe med at finde hvilke faktorer spiller ind, når de skal beslutte om de vil komme til kampen eller nej.
+
+For at forbedre prædiktionsmodellen bør VFF fokusere på at integrere og centralisere deres nuværende systemer. Klubben benytter Eventii til billetsalg, CRM-systemer til partneradministration og MailChimp til e-mailkommunikation, men mangler en samlet datainfrastruktur. En optimal løsning vil være at implementere et centralt data warehouse, såsom Microsoft Azure, der kan samle og strukturere data fra de forskellige systemer.
+
+Til analyse og visualisering anbefales Microsoft Power BI, som giver mulighed for at præsentere modellens resultater i et intuitivt og visuelt format. Dette vil styrke beslutningsprocessen og fremme en mere datadrevet tilgang i VFF.
+
+\newpage
+
+# Konklusion 
+
+Konklusionen i dette projekt repræsenterer svaret til problemformulering *”Hvordan kan Viborg F.F. implementere dataløsninger, der effektivt forudsiger, hvor mange VIP-gæster med Guld Menu der møder op til hjemmekampe? Hvordan kan denne implementering planlægges og gennemføres, så den bidrager til bedre planlægning, optimere ressourcestyring, med fokus på en sikre effektiv forandringsproces i organisationen?”* Ved en kombination af forretningsforståelse, datamodenhed og implementering blevet problemstilling behandlet ud fra flere perspektiver. Forretningsanalysen viste, at ikke alle VIP-gæster udnytter deres billetter optimalt, hvilket skaber tomme pladser og reducerer den kommercielle værdi for sponsorer. En mere datadrevet tilgang kan hjælpe VFF med at forbedre VIP-oplevelsen, optimere billetudnyttelsen og potentielt styrke sponsorrelationer gennem bedre rapportering og dokumentation af VIP-gæsters engagement.
+
+Vurdering af datamodenhed placerede VFF på et lavt niveau, pga. at klubben bruger data til beslutningstagning, men udfordres af datasiloer og manglende integration. Gennem etablering af data Warehouse og støtte deres medarbejdere med kurser for at forbedre deres IT færdigheder bør VFF forbedre datamodenhed niveau.
+
+Modellen viser potentiale, men dens succes kræver et bedre datagrundlag, organisatorisk tilpasning og en langsigtet strategi. VFF kan ved hjælp af en trinvis implementering styrke deres datadrevne kultur og forbedre ressourcestyringen. Løsningsforslaget er derfor, at VFF bør gennemføre en kvalitativ undersøgelse af guldmenu-gæsterne for at identificere de adfærdsmønstre, der påvirker deres fremmøde. Dette vil give VFF en bedre forståelse af årsagerne bag gæsternes deltagelse og muliggøre løsninger, der kan øge udnyttelsesgraden, herunder finde nye variabler.
+
+\newpage
+
+# Litteraturliste
+
+**Bøger**
+
+o	Egholm, L. (2014). Videnskabsteori, perspektiver på organisationer og samfund.
+
+o	Dewey, J. (1931). Philosophy and Civilization. Minton, Balch & Company.
+
+o	Morgan, D. L. (2014). Pragmatism as a Paradigm for Social Research.Qualitative Inquiry, 20(8), 1045-1053.
+
+o	Patton, M. Q. (1990). Qualitative Evaluation and Research Methods. Sage Publications.
+
+**AI**
+
+o	OpenAI. (2024). ChatGPT (4.0). https://chatgpt.com/
+
+**Præsentationer fra VFF**
+
+o	Daniel Rønman (2024). Dania x Viborg F.F. Dataafdelingen – Viborg, Danmark.
+
+o	Palle (2024). DANIA’S DATAANALYTIKER – Viborg, Danmark.
+
+o	Tea Nørgaard (2024). VFF x Dania – Viborg, Danmark.
+
+o	Daniel Lindemann Jakobsen (2024). Marketing og Kommunikation – Viborg, Danmark.
+
+**Undervisningsmaterialer**
+
+o	B. Eilersen, Simon. (2024). Data i en forretningskontekst: Organisation og forretningsmodeller. Erhvervsakademi Dania.
+
+**www-dokumenter**
+
+o	Kølsen, C. et al (2017). Find vej i din dataindsats. Alexandra Instituttet for Industriens Fond. https://alexandra.dk/wp-content/uploads/2020/09/Alexandra-Instituttet-BDBA-Find-vej-i-din-dataindsats.pdf
+
+o	Viborg FF. (n.d.). Officiel hjemmeside. Tilgået fra https://vff.dk.
+
+o	Danmarks Meteorologiske Institut (DMI). (2024). Vejrdata og prognoser. Tilgået fra https://www.dmi.dk
+
+o	Superstats.dk. (2024). Statistik for Superligaen. Hentet fra https://www.superstats.dk
+
+
+\newpage
+
+# Bilag
+
+**Bilag 1:** Transskribering af interview 1
+
+**Bilag 2:** Transskribering af interview 2
+
+**Bilag 3:** Porter’s Five Forces
+
+**Bilag 4:** Alexandra modellen
+
+**Bilag 5:** Kotters 8-trins model
+
+\newpage
+
+
+
+
